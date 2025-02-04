@@ -1,0 +1,22 @@
+[package]
+name = "platform-spi"
+version = "0.1.0"
+description = "A rust tool for organizing projects with platform-specific source modules"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/tympanon/platform_spi"
+repository = "https://github.com/tympanon/platform_spi"
+categories = [
+   "rust-patterns"
+]
+resolver = "2"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.86"
+quote = "1.0.36"
+syn = { version = "2.0.63", features = [ "full" ] }
