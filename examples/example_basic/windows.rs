@@ -1,11 +1,8 @@
 use crate::FilePathDescription;
 
 pub type FilePathDescriberImpl = WindowsImpl;
-
 pub const OS_NAME: &'static str = "windows";
-
-pub struct WindowsImpl {
-}
+pub struct WindowsImpl;
 
 impl FilePathDescription for WindowsImpl {
     fn description(&self) -> String {

@@ -1,10 +1,8 @@
 use crate::FilePathDescription;
 
 pub type FilePathDescriberImpl = UnsupportedImpl;
-
 pub const OS_NAME: &'static str = "unknown";
-pub struct UnsupportedImpl {
-}
+pub struct UnsupportedImpl;
 
 impl FilePathDescription for UnsupportedImpl {
     fn description(&self) -> String {
