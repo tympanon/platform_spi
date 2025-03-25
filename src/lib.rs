@@ -77,6 +77,8 @@ pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {
     // SPI type aliases hoisted from the module declaration.
     let aliases = &rewritten_decl.aliases;
 
+    let (types, impls) = &rewritten_decl.implementations;
+
     quote! {
         #( 
             #[cfg(target_os = #target_names)]
@@ -89,6 +91,8 @@ pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {
         #mod_import
 
         #(#aliases)*
+
+        #(static_assertions::assert_impl_all!(#types : #impls);)*
     }.into()
 
 }
@@ -147,6 +151,7 @@ impl Parse for SpiAttributes {
 struct SpiModule {
     mod_import_decl: syn::ItemMod,
     aliases: Vec<syn::Item>,
+    implementations: (Vec<syn::Type>, Vec<syn::Path>)
 }
 // implementing TryFrom rather than Parse allows us to reuse most of the parse logic
 // from ItemMod, plus be a little more fine-grained with errors (e.g. we can report 
@@ -158,7 +163,7 @@ impl TryFrom<&syn::ItemMod> for SpiModule {
         let parent_module = mod_decl.ident.clone();
 
         let mod_aliases = check_spi_items(mod_decl)?;
-        let aliases = hoist_aliases(mod_aliases, parent_module)?;
+        let (aliases, implementations) = hoist_aliases_and_generate_impls(mod_aliases, parent_module)?;
 
         let mod_import_decl = syn::ItemMod {
             attrs: mod_decl.attrs.clone(),
@@ -170,7 +175,7 @@ impl TryFrom<&syn::ItemMod> for SpiModule {
             semi: Some(Semi(mod_decl.ident.span())),
         };
 
-        Ok(Self { mod_import_decl, aliases })
+        Ok(Self { mod_import_decl, aliases, implementations})
     }
 }
 
@@ -186,16 +191,29 @@ fn check_spi_items(mod_decl: &syn::ItemMod) -> Result<&[syn::Item], TokenStream>
     }
 }
 
-fn hoist_aliases(mod_aliases: &[syn::Item], parent_module: syn::Ident) -> Result<Vec<syn::Item>, TokenStream> {
+fn hoist_aliases_and_generate_impls(mod_aliases: &[syn::Item], parent_module: syn::Ident) -> Result<(Vec<syn::Item>, (Vec<syn::Type>, Vec<syn::Path>)), TokenStream> {
     let mut invalid_items: Vec<TokenStream2> = vec![];
     let mut aliases: Vec<syn::Item> = vec![];
+    let mut impl_types: Vec<syn::Type> = vec![];
+    let mut impls: Vec<syn::Path> = vec![];
 
     for item in mod_aliases {
+        if let syn::Item::Impl(impl_item) = item {
+            if let (0, None, Some((None, path, _))) = (impl_item.items.len(), &impl_item.generics.where_clause, &impl_item.trait_) {
+                impl_types.push(*impl_item.self_ty.clone());
+                impls.push(path.clone());
+            } else {
+                invalid_items.push(quote_spanned! {
+                    item.span() => compile_error!("Impl block is incorrectly formed, only format of 'impl Trait for Type {}' is allowed")
+                });
+            }
+            continue;
+        }
         let hoisted = match item {
             syn::Item::Type(alias) => hoist_type_alias(alias, &parent_module),
             syn::Item::Use(alias) => hoist_use_alias(alias, &parent_module),
             _ => Err(quote_spanned! {
-                item.span() => compile_error!("Only 'type' and 'use' items are supported in an SPI module declaration")
+                item.span() => compile_error!("Only 'type', 'use', and 'impl' items are supported in an SPI module declaration but found")
             })
         };
         match hoisted {
@@ -209,7 +227,7 @@ fn hoist_aliases(mod_aliases: &[syn::Item], parent_module: syn::Ident) -> Result
         return Err(collected.into())
     }
 
-    Ok(aliases)
+    Ok((aliases, (impl_types, impls)))
 }
 
 fn hoist_type_alias(alias: &syn::ItemType, parent_module: &syn::Ident) -> Result<syn::Item, TokenStream2> {
