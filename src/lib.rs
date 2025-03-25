@@ -13,7 +13,9 @@ use syn::{bracketed, parse::Parse, parse_macro_input, punctuated::Punctuated, sp
 /// Any "type" and "use" declarations in the module content block will be 
 /// converted into items in the parent module, which refer to items in the target platform
 /// module. These type aliases are the "SPI", required to be implemented
-/// for each supported platform. Item declarations other than "type" and "use" are not supported.
+/// for each supported platform. Additionally, an "impl" declaration can be made to specify 
+/// that each platform type must implement a specific trait.
+/// Item declarations other than "type", "use", and "impl" are not supported.
 /// 
 /// ## Unsupported Platforms
 /// One additional source file, "unsupported.rs", will be used for attempted compilation 
