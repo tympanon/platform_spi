@@ -34,7 +34,7 @@ use syn::{bracketed, parse::Parse, parse_macro_input, punctuated::Punctuated, sp
 ///     pub use ErrorImpl as PlatformError;
 /// 
 ///     /// Trait contract that specifies that each platform-specific PlatformService will implement SomeTrait
-///     impl SomeTrait for PlatformService;
+///     impl SomeTrait for PlatformService{}
 /// }
 /// ```
 /// 
