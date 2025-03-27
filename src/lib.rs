@@ -32,6 +32,9 @@ use syn::{bracketed, parse::Parse, parse_macro_input, punctuated::Punctuated, sp
 /// 
 ///     /// A platform-specific error type, renamed and exported from the parent module as "PlatformError".
 ///     pub use ErrorImpl as PlatformError;
+/// 
+///     /// Trait contract that specifies that each platform-specific PlatformService will implement SomeTrait
+///     impl SomeTrait for PlatformService;
 /// }
 /// ```
 /// 
@@ -58,6 +61,8 @@ use syn::{bracketed, parse::Parse, parse_macro_input, punctuated::Punctuated, sp
 /// pub type PlatformService<T> = platform::ServiceImpl<T>;
 /// #[doc = "A platform-specific error type, renamed and exported from the parent module as \"PlatformError\"."]
 /// pub use platform::ErrorImpl as PlatformError;
+/// 
+/// static_assertions::assert_impl_all!(PlatformService : SomeTrait);
 /// ```
 #[proc_macro_attribute]
 pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {

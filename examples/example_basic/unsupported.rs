@@ -4,8 +4,16 @@ pub type FilePathDescriberImpl = UnsupportedImpl;
 pub const OS_NAME: &'static str = "unknown";
 pub struct UnsupportedImpl;
 
-impl FilePathDescription<String> for UnsupportedImpl {
+impl ToString for UnsupportedImpl {
+    fn to_string(&self) -> String {
+        "This platform is unknown so we do not know how file paths are written.".to_string();
+    }
+}
+
+//Example blanket implementation that fulfills contract
+impl<T> FilePathDescription<String> for T
+where T : ToString {
     fn description(&self) -> String {
-        return "This platform is unknown so we do not know how file paths are written.".to_string();
+        return self.to_string();
     }
 }
