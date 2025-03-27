@@ -14,11 +14,14 @@ mod platform {
 
     //Declares a constant that must be provided for each platform
     pub use OS_NAME as PLATFORM_NAME;
+
+    //trait that each platform specific FilePathDescriberImpl must implement
+    impl FilePathDescription<String> for FilePathDescriber {}
+
 }
 
-//trait that each platform specific FilePathDescriberImpl must implement (by convention)
-trait FilePathDescription {
-    fn description(&self) -> String;
+trait FilePathDescription<T> {
+    fn description(&self) -> T;
 }
 
 fn main() {
