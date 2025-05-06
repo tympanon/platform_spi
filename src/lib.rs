@@ -353,7 +353,6 @@ impl Parse for SpiAttributes {
     }
 }
 
-
 struct SpiModule {
     mod_import_decl: syn::ItemMod,
     aliases: Vec<syn::Item>,
