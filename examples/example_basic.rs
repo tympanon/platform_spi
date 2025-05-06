@@ -6,7 +6,13 @@ use platform_spi::platform_spi;
 /// module_path: declares the platform implementations will be stored in the ./example_basic directory
 /// target: declares that there are 3 platforms implementations - macos (see example_basic/macos.rs), windows, and linux
 /// An unsupported implementation is optionally provided in example_basic/unsupported.rs
-#[platform_spi(module_path="example_basic" targets = [macos, windows, linux])]
+#[platform_spi(module_path="example_basic"
+            when target_os is {
+                macos => macos,
+                windows => windows,
+                linux => linux,
+                _ => unsupported
+            })]
 mod platform {
 
     //Declares a type to be implemented for each platform
