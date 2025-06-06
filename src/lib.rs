@@ -109,7 +109,7 @@ pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 struct Mapping {
-    cfg_attributes: syn::TypeTuple,
+    cfg_attributes: Punctuated::<syn::Ident, Comma>,
     routes: Vec<CustomArm>,
     module_path: syn::LitStr
 }
@@ -118,34 +118,12 @@ impl Mapping {
     fn build_module_declarations(&self) -> Result<(Vec<TokenStream2>, Vec<String>), TokenStream> {
         let mut result = vec![];
         let mut file_paths = vec![];
-        let mut attributes = vec![];
-
-        #[allow(dead_code)]
-        const ATTRIBUTE_NAME_ERROR: &str = "Attribute name for when clause in platform SPI malformed.";
-
-        for attr in &self.cfg_attributes.elems {
-            match attr {
-                syn::Type::Path(path) => {
-                    let parts: Vec<syn::Ident> = path.path.segments.iter().map(|x| x.ident.clone()).collect();
-                    if parts.len() > 1 {
-                        return Err(quote_spanned! {
-                            path.span() => compile_error!(ATTRIBUTE_NAME_ERROR)
-                        }.into());
-                    }
-                    attributes.push(parts[0].clone());
-                }
-                _ => return Err(quote_spanned! {
-                    attr.span() => compile_error!(ATTRIBUTE_NAME_ERROR)
-                }.into())
-            }
-        }
-
         let mut errors = vec![];
 
         for route in &self.routes {
             let mut pairs = vec![];
 
-            match self.build_cfg_conditions(&mut result, &mut file_paths, route, &attributes, &mut pairs, false) {
+            match self.build_cfg_conditions(&mut result, &mut file_paths, route, &self.cfg_attributes, &mut pairs, false) {
                 Ok(_) => (),
                 Err(err) => errors.push(err),
             }
@@ -159,7 +137,7 @@ impl Mapping {
         Ok((result, file_paths))
     }
 
-    fn build_cfg_conditions(&self, past_conditions: &mut Vec<TokenStream2>, file_paths: &mut Vec<String>, route: &CustomArm, attributes: &Vec<syn::Ident>, current_conditions: &mut Vec<TermAttributePair>, disable_interpolation: bool) -> Result<(), TokenStream2> {
+    fn build_cfg_conditions(&self, past_conditions: &mut Vec<TokenStream2>, file_paths: &mut Vec<String>, route: &CustomArm, attributes: &Punctuated::<syn::Ident, Comma>, current_conditions: &mut Vec<TermAttributePair>, disable_interpolation: bool) -> Result<(), TokenStream2> {
         let patterns = &route.pats;
         match (attributes.get(current_conditions.len()), patterns.get(current_conditions.len())) {
             (None, None) => {
@@ -302,9 +280,7 @@ impl Parse for SpiAttributes {
         let mut result = SpiAttributes {
             module_path: syn::LitStr::new(".", input.span()),
             mapping: Mapping {
-                cfg_attributes: syn::TypeTuple {
-                    paren_token: Default::default(),
-                    elems: Default::default()},
+                cfg_attributes: Default::default(),
                 routes: Default::default(),
                 module_path: syn::LitStr::new(".", input.span())}
         };
@@ -323,10 +299,12 @@ impl Parse for SpiAttributes {
                     if input.peek(syn::Ident) {
                         //single element
                         let attribute = input.parse()?;
-                        result.mapping.cfg_attributes.elems.push(attribute);
+                        result.mapping.cfg_attributes.push(attribute);
                     }
                     else {
-                        result.mapping.cfg_attributes = input.parse()?;
+                        let attributes;
+                        let _parens_token = syn::parenthesized!(attributes in input);
+                        result.mapping.cfg_attributes = attributes.parse_terminated(syn::Ident::parse, Comma)?;
                     }
                     let _is: Option<kw::is> = input.parse()?;
                     let arms;
