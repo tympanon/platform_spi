@@ -6,7 +6,7 @@ pub struct UnsupportedImpl;
 
 impl ToString for UnsupportedImpl {
     fn to_string(&self) -> String {
-        "This platform is unknown so we do not know how file paths are written.".to_string();
+        "This platform is unknown so we do not know how file paths are written.".to_string()
     }
 }
 
