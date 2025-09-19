@@ -80,7 +80,7 @@ pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {
         Err(diagnostics) => return diagnostics,
     };
 
-    let (cfgs, file_paths) = match config.mapping.build_module_declarations() {
+    let module_attributes = match config.mapping.build_module_declarations() {
         Ok(module) => module,
         Err(diagnostics) => return diagnostics,
     };
@@ -96,8 +96,7 @@ pub fn platform_spi(args: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
 
         #( 
-            #[cfg(#cfgs)]
-            #[path = #file_paths]
+            #module_attributes
             #mod_import
         )*
 
@@ -114,16 +113,31 @@ struct Mapping {
     module_path: syn::LitStr
 }
 
+struct ModuleAttributes {
+   selector: TokenStream2,
+   path: String
+}
+
+impl ToTokens for ModuleAttributes {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+       let (selector, path) = (&self.selector, &self.path);
+       quote! {
+            #[cfg(#selector)]
+            #[path = #path]
+       }.to_tokens(tokens)
+    }
+}
+
+
 impl Mapping {
-    fn build_module_declarations(&self) -> Result<(Vec<TokenStream2>, Vec<String>), TokenStream> {
-        let mut result = vec![];
-        let mut file_paths = vec![];
+    fn build_module_declarations(&self) -> Result<Vec<ModuleAttributes>, TokenStream> {
+        let mut module_attributes = vec![];
         let mut errors = vec![];
 
         for route in &self.routes {
             let mut pairs = vec![];
 
-            match self.build_cfg_conditions(&mut result, &mut file_paths, route, &self.cfg_attributes, &mut pairs, false) {
+            match self.build_cfg_conditions(&mut module_attributes, route, &self.cfg_attributes, &mut pairs, false) {
                 Ok(_) => (),
                 Err(err) => errors.push(err),
             }
@@ -134,26 +148,22 @@ impl Mapping {
             return Err(collected.into())
         }
 
-        Ok((result, file_paths))
+        Ok(module_attributes)
     }
 
-    fn build_cfg_conditions(&self, past_conditions: &mut Vec<TokenStream2>, file_paths: &mut Vec<String>, route: &CustomArm, attributes: &Punctuated::<syn::Ident, Comma>, current_conditions: &mut Vec<TermAttributePair>, disable_interpolation: bool) -> Result<(), TokenStream2> {
+    fn build_cfg_conditions(&self, module_attributes: &mut Vec<ModuleAttributes>, route: &CustomArm, attributes: &Punctuated::<syn::Ident, Comma>, current_conditions: &mut Vec<TermAttributePair>, disable_interpolation: bool) -> Result<(), TokenStream2> {
         let patterns = &route.pats;
         match (attributes.get(current_conditions.len()), patterns.get(current_conditions.len())) {
             (None, None) => {
                 let file_path = self.generate_full_file_path(current_conditions, &route.file_path, disable_interpolation)?;
-                let condition = generate_cfg_condition(past_conditions, current_conditions);
-                let cfg = quote! {
-                    #condition
-                };
-                past_conditions.push(cfg);
-                file_paths.push(file_path);
+                let condition = generate_cfg_condition(module_attributes, current_conditions);
+                module_attributes.push(ModuleAttributes{
+                    selector: condition,
+                    path: file_path
+                });
             },
-            //TODO: get spans working with the custom parse objects so errors highlight more accurately
-            //TODO: Should try to get string formatting to work so we can see number of patterns and number of attributes (may need to use a different error type)
             //TODO: we should support _ => to match multiple defaults, right now if you have 2 attributes you'd need to specify (_, _) => ...
-            (None, Some(_)) => return Err(quote_spanned! {route.file_path.span() => compile_error!("Number of patterns does not match number of attributes.")}),
-            (Some(_), None) => return Err(quote_spanned! {route.file_path.span() => compile_error!("Number of patterns does not match number of attributes.")}),
+            (None, Some(_)) | (Some(_), None) => return Err(quote_spanned! {route.file_path.span() => compile_error!("Number of patterns does not match number of attributes.")}),
             (Some(attribute), Some(pattern)) => {
                 for term in &pattern.terms {
                     current_conditions.push(TermAttributePair{
@@ -162,9 +172,9 @@ impl Mapping {
                     });
                     match (term.negation, term.val.to_string().as_str()) {
                         (Some(_), "_") => return Err(quote_spanned! {term.val.span() => compile_error!("Negation of _ pattern in platform SPI not valid")}),
-                        (Some(_), _) => self.build_cfg_conditions(past_conditions, file_paths, route, attributes, current_conditions, true)?,
-                        (None, "_") => self.build_cfg_conditions(past_conditions, file_paths, route, attributes, current_conditions, true)?,
-                        _ => self.build_cfg_conditions(past_conditions, file_paths, route, attributes, current_conditions, disable_interpolation)?
+                        (Some(_), _) => self.build_cfg_conditions(module_attributes, route, attributes, current_conditions, true)?,
+                        (None, "_") => self.build_cfg_conditions(module_attributes, route, attributes, current_conditions, true)?,
+                        _ => self.build_cfg_conditions(module_attributes, route, attributes, current_conditions, disable_interpolation)?
                     }
                     current_conditions.pop();
                 }
@@ -173,7 +183,7 @@ impl Mapping {
         Ok(())
     }
 
-    fn generate_full_file_path(&self, _current_conditions: &Vec<TermAttributePair>, file_path: &syn::Ident, _disable_interpolation: bool) -> Result<String, TokenStream2> {
+    fn generate_full_file_path(&self, _current_conditions: &[TermAttributePair], file_path: &syn::Ident, _disable_interpolation: bool) -> Result<String, TokenStream2> {
         //TODO: interpolation
         Ok(format!("{}/{}.rs", self.module_path.value(), file_path.to_string()))
     }
@@ -181,10 +191,11 @@ impl Mapping {
 
 
 
-fn generate_cfg_condition(past_conditions: &Vec<TokenStream2>, current_conditions: &Vec<TermAttributePair>) -> TokenStream2 {
+fn generate_cfg_condition(module_attributes: &[ModuleAttributes], current_conditions: &[TermAttributePair]) -> TokenStream2 {
     //Note, we take a very naive approach on the mutually exclusive conditions by adding every previous mapping to a not block,
     //which can become large in complex cases
     //TODO: Do something more clever to reduce the size of these boolean expressions and make the macro expansion more readable
+    let past_conditions = module_attributes.iter().map(|m| &m.selector);
     quote! {all(not(any(#(#past_conditions, )*)), #(#current_conditions, )*)}
 }
 
@@ -214,7 +225,7 @@ struct TermAttributePair {
 
 impl ToTokens for TermAttributePair {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        if self.term.val.to_string().as_str() == "_" {
+        if self.term.val.to_string() == "_" {
             //return any match, as a predicate needs to be supplied
             return quote! {any()}.to_tokens(tokens);
         }
